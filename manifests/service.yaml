@@ -5,9 +5,10 @@ metadata:
   namespace: default
 spec:
   selector:
-    app: position-simulator
+    app: fleetman-position-simulator
   ports:
   - name: http
     port: 8080
     targetPort: 8080
-  type: ClusterIP
+    nodePort: 30081
+  type: NodePort
