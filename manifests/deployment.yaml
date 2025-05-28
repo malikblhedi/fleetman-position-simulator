@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: position-simulator
+  name: fleetman-position-simulator
   namespace: default
 spec:
   selector:
     matchLabels:
-      app: position-simulator
+      app: fleetman-position-simulator
   replicas: 1
   template:
     metadata:
       labels:
-        app: position-simulator
+        app: fleetman-position-simulator
     spec:
       containers:
-      - name: position-simulator
-        image: votre-utilisateur/fleetman-position-simulator:release2
+      - name: fleetman-position-simulator
+        image: melek99/fleetman-position-simulator:release2
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: production-microservice
