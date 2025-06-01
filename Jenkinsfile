@@ -1,66 +1,38 @@
+def commit_id
 pipeline {
-    agent none
+    agent any
     stages {
-        stage('Checkout') {
-            agent any
+        stage('Preparation') {
             steps {
-                git url: 'https://github.com/malikblhedi/fleetman-position-simulator.git', branch: 'main'
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], userRemoteConfigs: [[url: 'https://github.com/malikblhedi/fleetman-position-simulator.git', credentialsId: 'github-credentials']]])
+                sh "git rev-parse --short HEAD > .git/commit-id"
+                script {
+                    commit_id = readFile('.git/commit-id').trim()
+                }
+                echo "Commit ID: ${commit_id}"
             }
         }
-        stage('Build') {
-            agent {
-                docker {
-                    image 'maven:3.9.6-openjdk-8'
-                    args '-v /root/.m2:/root/.m2'
-                }
-            }
+        stage('Image Build') {
             steps {
-                sh 'mvn clean package'
+                echo "Copying Dockerfile and index.html to Minikube..."
+                sh "minikube cp ${WORKSPACE}/Dockerfile minikube:/tmp/Dockerfile"
+                sh "minikube cp ${WORKSPACE}/index.html minikube:/tmp/index.html"
+                
+                echo "Building Docker image with tag fleetman-webapp:${commit_id}..."
+                sh "minikube ssh 'cd /tmp && docker build -t fleetman-webapp:${commit_id} .'"
+                
+                echo "Build complete"
+                sh "minikube ssh 'rm -f /tmp/Dockerfile /tmp/index.html' || true"
             }
         }
-        stage('SonarQube Analysis') {
-            agent {
-                docker {
-                    image 'maven:3.9.6-openjdk-8'
-                    args '-v /root/.m2:/root/.m2'
-                }
-            }
+        stage('Deploy') {
             steps {
-                withSonarQubeEnv('SonarQube') {
-                    sh 'mvn sonar:sonar -Dsonar.host.url=http://192.168.252.131:9000'
-                }
-            }
-        }
-        stage('Build Docker Image') {
-            agent {
-                docker {
-                    image 'docker:27.3-dind'
-                    args '--privileged'
-                }
-            }
-            steps {
-                sh 'docker build -t melek99/fleetman-position-simulator:release2 .'
-            }
-        }
-        stage('Push Docker Image') {
-            agent {
-                docker {
-                    image 'docker:27.3-dind'
-                    args '--privileged'
-                }
-            }
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
-                    sh 'docker push melek99/fleetman-position-simulator:release2'
-                }
-            }
-        }
-        stage('Deploy to Kubernetes') {
-            agent any
-            steps {
-                sh 'kubectl apply -f manifests/deployment.yaml'
-                sh 'kubectl apply -f manifests/service.yaml'
+                echo "Deploying to Minikube"
+                sh "sed -i '' 's|richardchesterwood/k8s-fleetman-webapp-angular:release2|fleetman-webapp:${commit_id}|' ${WORKSPACE}/replicaset-webapp.yml"
+                sh "kubectl apply -f ${WORKSPACE}/replicaset-webapp.yml"
+                sh "kubectl apply -f ${WORKSPACE}/webapp-service.yml"
+                sh "kubectl get all"
+                echo "Deployment complete"
             }
         }
     }
